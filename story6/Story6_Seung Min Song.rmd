@@ -1,0 +1,158 @@
+---
+title: "Assignment 3"  
+author: "Seung Min Song"
+date: "2023-10-08"
+output:  
+  html_document:
+    toc: true
+    toc_float: true
+    show_toggle: true
+  pdf_document:
+  includes:
+  in_header: header.html
+css: ./lab.css
+fontsize: 10pt
+linestretch: 1.5
+---
+
+GitHub: <https://github.com/CUNY-SPS-Data-Science-Program/story-3-seung-m1nsong>\
+rpubs: <https://rpubs.com/seungm1nsong/1094860>
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(jsonlite)
+library(ggiraphExtra)
+library(mapproj)
+library(tibble)
+library(reshape2)
+library(ggthemes)
+library(usmap)
+library(leaflet)
+library(ggrepel)
+library(maps)
+library(sf)
+library(sp)
+library(png)
+library(grid)
+library(geojsonio)
+library(RColorBrewer)
+library(hexbin)
+library(broom)
+```
+
+
+
+
+```{r}
+# Load the GeoJSON data
+hexbin_df <- geojson_read("https://raw.githubusercontent.com/seung-m1nsong/608/main/story6/us_states_hexgrid.geojson", what = "sp")
+
+# Remove "(United States)" from google_name
+hexbin_df$google_name <- gsub(" \\(United States\\)", "", hexbin_df$google_name)
+
+head(hexbin_df)
+#write.csv(hexbin_df, file = "C:/Users/SeungminSong/Downloads/608R/hexbin_df.csv", row.names = FALSE)
+```
+
+```{r}
+#hexbin_df@data = hexbin_df@data %>% mutate(google_name = gsub(" \\(United States\\)", "", google_name))
+#hexbin_df_fortified <- tidy(hexbin_df)
+#hexbin_df_fortified 
+```
+
+```{r}
+# Create text lable for each state
+labels <- data.frame(
+  iso3166_2 = hexbin_df$iso3166_2,  
+  lon = coordinates(hexbin_df)[, 1],   
+  lat = coordinates(hexbin_df)[, 2]    
+)
+
+# combine GeoJSON data with state label
+hexbin_df_labels <- left_join(hexbin_df@data, labels, by = "iso3166_2")
+
+# ggplot2
+ggplot() +
+  geom_polygon(data = hexbin_df, aes(x = long, y = lat, group = group), fill = "skyblue", color = "white") +
+  geom_text(data = hexbin_df_labels, aes(x = lon, y = lat, label = iso3166_2), size = 3) +
+  labs(title = "USA Map with State Names") +
+  theme_void() +
+  coord_map() 
+
+#ggsave("usa_map_with_state_names.png", width = 10, height = 8, units = "in")
+
+head(hexbin_df_labels)
+```
+
+
+```{r}
+# Load Food Security by state data
+hunger_df <- read.csv("https://raw.githubusercontent.com/seung-m1nsong/608/main/story6/state.csv")
+
+hunger_df <- hunger_df %>%
+  rename_all(~ gsub("\\.", "_", .)) %>%
+  rename_at(vars(ends_with("_")), ~gsub("_$", "", .))
+
+#head(hunger_df)
+```
+
+```{r}
+filter_hunger_df <- hunger_df %>% filter(Year >= 2021)
+head(filter_hunger_df)
+```
+
+## chloropleth map
+```{r}
+
+# combine data based on iso3166_2 & State row
+combined_data <- hexbin_df_labels %>%
+  left_join(filter_hunger_df, by = c("iso3166_2" = "State"))
+
+str(combined_data)
+combined_data <- combined_data %>%
+  rename(long = lon)
+
+head(combined_data)
+str(combined_data)
+#write.csv(combined_data, file = "C:/Users/SeungminSong/Downloads/608R/combined_data.csv", row.names = FALSE)
+```
+
+```{r}
+#print map
+ggplot() +
+  geom_polygon(data = hexbin_df, aes(x = long, y = lat, group = group), fill = "#8DD3C7", color = "white") +
+  geom_text(data = combined_data, aes(x = long, y = lat, label = paste(iso3166_2, "\n", Senior_Food_Insecurity_Rate__State_of_Senior_Hunger)), size = 3) +
+  #scale_fill_gradient(low = "red", high = "blue") +
+  labs(title = "USA Map with State Names") +
+  theme_void() +
+  coord_map()
+```
+
+scale_fill_gradient
+```{r}
+combined_data$Senior_Food_Insecurity_Rate__State_of_Senior_Hunger <- gsub("[^0-9.]", "", combined_data$Senior_Food_Insecurity_Rate__State_of_Senior_Hunger)
+combined_data$Senior_Food_Insecurity_Rate__State_of_Senior_Hunger <- as.numeric(combined_data$Senior_Food_Insecurity_Rate__State_of_Senior_Hunger)
+
+low_value <- min(combined_data$Senior_Food_Insecurity_Rate__State_of_Senior_Hunger, na.rm = TRUE)
+high_value <- max(combined_data$Senior_Food_Insecurity_Rate__State_of_Senior_Hunger, na.rm = TRUE)
+
+ggplot() +
+  geom_polygon(data = hexbin_df, aes(x = long, y = lat, group = group), fill = "lightgray", color = "white") +
+  geom_tile(data = combined_data, aes(x = long, y = lat, fill = Senior_Food_Insecurity_Rate__State_of_Senior_Hunger), color = "white", alpha = 0.8) +
+  scale_fill_gradient(low = "lightblue", high = "darkblue") +
+  geom_text(data = combined_data[!is.na(combined_data$Senior_Food_Insecurity_Rate__State_of_Senior_Hunger), ], 
+            aes(x = long, y = lat, label = paste(iso3166_2, "\n", Senior_Food_Insecurity_Rate__State_of_Senior_Hunger)), 
+            size = 3) +
+  labs(title = "USA Map with State Names") +
+  theme_void() +
+  coord_map()
+
+
+
+
+```
